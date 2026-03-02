@@ -1,0 +1,54 @@
+import serial
+import time
+
+ser = serial.Serial('COM4', 9600)
+
+soundThreshold = 400      # clap threshold
+distanceLimit = 10.0       # ultrasonic threshold
+tempLimit = 28.0
+
+ledSoundState = False
+ledUltraState = False
+debounceTime = 0.5
+
+lastClapTime = 0
+lastPrintTime = 0
+printInterval = 2
+
+while True:
+    line = ser.readline().decode().strip()
+    try:
+        sound_str, distance_str, temp_str = line.split(",")
+        sound = int(sound_str)
+        temp = float(temp_str)
+
+        if distance_str == "Out of range":
+            distance = None
+        else:
+            distance = int(float(distance_str))
+
+        currentTime = time.time()
+
+        # --- Clap LED logic ---
+        if sound > soundThreshold and (currentTime - lastClapTime) > debounceTime:
+            ledSoundState = not ledSoundState
+            lastClapTime = currentTime
+            ser.write(b'1' + (b'1' if ledSoundState else b'0'))
+
+        # --- Ultrasonic LED logic (immediate on/off) ---
+        if distance is not None:
+            if distance < distanceLimit and not ledUltraState:
+                ledUltraState = True
+                ser.write(b'2' + b'1')
+            elif distance >= distanceLimit and ledUltraState:
+                ledUltraState = False
+                ser.write(b'2' + b'0')
+
+        # --- Throttled sensor print ---
+        if currentTime - lastPrintTime >= printInterval:
+            dist_display = f"{distance} cm" if distance is not None else "Out of range"
+            print(f"Sound: {sound} | Distance: {dist_display} | Temp: {temp:.1f}C")
+            lastPrintTime = currentTime
+
+    except:
+        print("Parse error")
