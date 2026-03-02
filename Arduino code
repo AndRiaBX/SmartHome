@@ -1,0 +1,77 @@
+#include <DHT.h>
+
+#define DHTPIN 7
+#define DHTTYPE DHT22
+
+DHT dht(DHTPIN, DHTTYPE);
+
+int trigPin = 2;
+int echoPin = 3;
+int micPin = A0;
+int ledSoundPin = 8;  // clap LED
+int ledUltraPin = 5;  // ultrasonic LED moved to pin 5
+
+void setup() {
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  pinMode(ledSoundPin, OUTPUT);
+  pinMode(ledUltraPin, OUTPUT);
+
+  digitalWrite(ledSoundPin, LOW);
+  digitalWrite(ledUltraPin, LOW);
+
+  Serial.begin(9600);
+  dht.begin();
+  delay(3000);
+}
+
+float getDistance() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  long duration = pulseIn(echoPin, HIGH, 30000);
+  if(duration == 0) return -1;
+  return duration * 0.034 / 2;
+}
+
+// Peak detection for mic
+int readMicPeak() {
+  int peak = 0;
+  for(int i = 0; i < 20; i++){
+    int val = analogRead(micPin);
+    if(val > peak) peak = val;
+    delay(1);
+  }
+  return peak;
+}
+
+void loop() {
+  int soundValue = readMicPeak();
+  float distance = getDistance();
+  float temp = dht.readTemperature();
+
+  // Send CSV
+  if(!isnan(temp)) {
+    Serial.print(soundValue);
+    Serial.print(",");
+    if(distance == -1) Serial.print("Out of range");
+    else Serial.print(int(distance));
+    Serial.print(",");
+    Serial.println(temp);
+  }
+
+  // Listen for Python commands
+  while(Serial.available() > 0) {
+    char ledId = Serial.read();       // '1' or '2'
+    char state = Serial.read();       // '0' or '1'
+
+    if(ledId == '1') digitalWrite(ledSoundPin, state == '1' ? HIGH : LOW);
+    if(ledId == '2') digitalWrite(ledUltraPin, state == '1' ? HIGH : LOW);
+  }
+
+  delay(50); // small non-blocking delay
+}
